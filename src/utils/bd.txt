@@ -1,0 +1,187 @@
+-- SparkClean Database Schema
+-- For easy deployment to any hosting platform
+
+-- Create database (if using MySQL/PostgreSQL hosting)
+-- CREATE DATABASE sparkclean_db;
+
+-- Admin Users Table
+CREATE TABLE admin_users (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    full_name VARCHAR(255) NOT NULL,
+    role ENUM('super_admin', 'admin', 'viewer') DEFAULT 'admin',
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- Customers Table
+CREATE TABLE customers (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    first_name VARCHAR(100) NOT NULL,
+    last_name VARCHAR(100) NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    phone VARCHAR(20),
+    address_line1 VARCHAR(255),
+    address_line2 VARCHAR(255),
+    city VARCHAR(100),
+    county VARCHAR(100),
+    postcode VARCHAR(10),
+    country VARCHAR(50) DEFAULT 'United Kingdom',
+    customer_type ENUM('residential', 'commercial') DEFAULT 'residential',
+    is_active BOOLEAN DEFAULT TRUE,
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- Services Table
+CREATE TABLE services (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    service_type ENUM('residential', 'commercial', 'both') DEFAULT 'both',
+    base_price DECIMAL(10,2),
+    price_per_hour DECIMAL(10,2),
+    price_per_sqm DECIMAL(10,2),
+    duration_minutes INT,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- Bookings Table
+CREATE TABLE bookings (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    booking_reference VARCHAR(50) UNIQUE NOT NULL,
+    customer_id INT NOT NULL,
+    service_id INT NOT NULL,
+    booking_date DATE NOT NULL,
+    booking_time TIME NOT NULL,
+    duration_minutes INT DEFAULT 120,
+    property_size VARCHAR(50),
+    special_instructions TEXT,
+    booking_status ENUM('pending', 'confirmed', 'in_progress', 'completed', 'cancelled') DEFAULT 'pending',
+    total_amount DECIMAL(10,2),
+    payment_status ENUM('pending', 'paid', 'partial', 'refunded') DEFAULT 'pending',
+    payment_method ENUM('card', 'bank_transfer', 'cash', 'pay_after_service') DEFAULT 'pay_after_service',
+    admin_notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
+    FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE RESTRICT
+);
+
+-- Payments Table
+CREATE TABLE payments (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    payment_reference VARCHAR(50) UNIQUE NOT NULL,
+    booking_id INT NOT NULL,
+    customer_id INT NOT NULL,
+    amount DECIMAL(10,2) NOT NULL,
+    payment_method ENUM('stripe_card', 'bank_transfer', 'cash', 'other') NOT NULL,
+    payment_status ENUM('pending', 'processing', 'completed', 'failed', 'refunded') DEFAULT 'pending',
+    stripe_payment_intent_id VARCHAR(255),
+    stripe_charge_id VARCHAR(255),
+    transaction_fee DECIMAL(10,2) DEFAULT 0,
+    net_amount DECIMAL(10,2),
+    payment_date TIMESTAMP NULL,
+    refund_amount DECIMAL(10,2) DEFAULT 0,
+    refund_date TIMESTAMP NULL,
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE CASCADE,
+    FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE
+);
+
+-- Contact Messages Table (from contact form)
+CREATE TABLE contact_messages (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    phone VARCHAR(20),
+    subject VARCHAR(255),
+    message TEXT NOT NULL,
+    status ENUM('new', 'in_progress', 'resolved', 'closed') DEFAULT 'new',
+    admin_response TEXT,
+    responded_at TIMESTAMP NULL,
+    responded_by INT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (responded_by) REFERENCES admin_users(id) ON DELETE SET NULL
+);
+
+-- Admin Activity Log Table
+CREATE TABLE admin_activity_log (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    admin_user_id INT NOT NULL,
+    action VARCHAR(255) NOT NULL,
+    table_name VARCHAR(100),
+    record_id INT,
+    old_values JSON,
+    new_values JSON,
+    ip_address VARCHAR(45),
+    user_agent TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (admin_user_id) REFERENCES admin_users(id) ON DELETE CASCADE
+);
+
+-- Insert default services
+INSERT INTO services (name, description, service_type, base_price, price_per_hour, duration_minutes) VALUES
+('Regular House Cleaning', 'Complete house cleaning including all rooms, kitchen, and bathrooms', 'residential', 60.00, 25.00, 120),
+('Deep Cleaning', 'Intensive deep cleaning service for move-ins, move-outs, or spring cleaning', 'residential', 120.00, 30.00, 240),
+('Office Cleaning', 'Professional office cleaning including desks, common areas, and facilities', 'commercial', 80.00, 35.00, 90),
+('End of Tenancy Cleaning', 'Comprehensive cleaning for rental properties at end of tenancy', 'residential', 150.00, 28.00, 300),
+('Carpet Cleaning', 'Professional carpet and upholstery cleaning service', 'both', 50.00, 40.00, 60),
+('Window Cleaning', 'Interior and exterior window cleaning service', 'both', 30.00, 20.00, 45),
+('Post-Construction Cleaning', 'Specialized cleaning after construction or renovation work', 'both', 200.00, 45.00, 360);
+
+-- Insert default admin user (password should be hashed in real implementation)
+INSERT INTO admin_users (email, password_hash, full_name, role) VALUES
+('admin@sparkclean.co.uk', '$2y$10$example_hash_here', 'SparkClean Admin', 'super_admin');
+
+-- Create indexes for better performance
+CREATE INDEX idx_customers_email ON customers(email);
+CREATE INDEX idx_bookings_date ON bookings(booking_date);
+CREATE INDEX idx_bookings_status ON bookings(booking_status);
+CREATE INDEX idx_bookings_customer ON bookings(customer_id);
+CREATE INDEX idx_payments_booking ON payments(booking_id);
+CREATE INDEX idx_payments_status ON payments(payment_status);
+CREATE INDEX idx_contact_messages_status ON contact_messages(status);
+CREATE INDEX idx_admin_activity_date ON admin_activity_log(created_at);
+
+-- Create views for common queries
+CREATE VIEW booking_summary AS
+SELECT 
+    b.id,
+    b.booking_reference,
+    CONCAT(c.first_name, ' ', c.last_name) as customer_name,
+    c.email as customer_email,
+    c.phone as customer_phone,
+    s.name as service_name,
+    b.booking_date,
+    b.booking_time,
+    b.booking_status,
+    b.total_amount,
+    b.payment_status,
+    b.created_at
+FROM bookings b
+JOIN customers c ON b.customer_id = c.id
+JOIN services s ON b.service_id = s.id;
+
+CREATE VIEW payment_summary AS
+SELECT 
+    p.id,
+    p.payment_reference,
+    CONCAT(c.first_name, ' ', c.last_name) as customer_name,
+    b.booking_reference,
+    p.amount,
+    p.payment_method,
+    p.payment_status,
+    p.payment_date,
+    p.created_at
+FROM payments p
+JOIN customers c ON p.customer_id = c.id
+JOIN bookings b ON p.booking_id = b.id;
